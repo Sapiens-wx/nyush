@@ -25,28 +25,28 @@ static void execution_init(Execution* exec){
 
 static void execution_print(Execution* exec){
 	//cmdname
-	printf("%.*s", exec->cmd_tok->len, exec->cmd_tok->str);
+	dprintf("%.*s", exec->cmd_tok->len, exec->cmd_tok->str);
 	//args
 	for(int i=0;i<exec->argc;++i){
-		printf(" %.*s", exec->args[i]->len, exec->args[i]->str);
+		dprintf(" %.*s", exec->args[i]->len, exec->args[i]->str);
 	}
 	//output redir
 	if(exec->output_redir_tok){
 		if(exec->is_append)
-			printf(" >> %.*s", exec->output_redir_tok->len, exec->output_redir_tok->str);
+			dprintf(" >> %.*s", exec->output_redir_tok->len, exec->output_redir_tok->str);
 		else
-			printf(" > %.*s", exec->output_redir_tok->len, exec->output_redir_tok->str);
+			dprintf(" > %.*s", exec->output_redir_tok->len, exec->output_redir_tok->str);
 	}
 	//input redir
 	if(exec->input_redir_tok){
-		printf(" < %.*s", exec->input_redir_tok->len, exec->input_redir_tok->str);
+		dprintf(" < %.*s", exec->input_redir_tok->len, exec->input_redir_tok->str);
 	}
 	//next ptr
 	if(exec->next){
 		if(exec->is_piped)
-			printf(" | ");
+			dprintf(" | ");
 		else
-			printf(" && ");
+			dprintf(" && ");
 		execution_print(exec->next);
 	}
 }
@@ -54,12 +54,6 @@ static void execution_print(Execution* exec){
 // ===============
 //     helpers
 // ===============
-
-#ifdef DEBUG
-#define printf(...) printf(__VA_ARGS__)
-#else
-#define printf(...)
-#endif
 
 // returns: if token->str==cmd
 static bool cmdcmp(const Token* tok, const char* cmd){
@@ -83,12 +77,12 @@ static bool parse_recursive(const Token*** tokens, int tokens_len, Execution* ou
 // returns: true if parsed successfully.
 static bool parse_cmd(const Token*** tokens, int tokens_len, Execution** out_exec){
 	if(tokens_len<=0){ //eof
-		printf("[ERROR] a [cmd] expected, but eof\n");
+		dprintf("[ERROR] a [cmd] expected, but eof\n");
 		return false;
 	}
 	const Token** token_arr=tokens[0];
 	if(token_arr[0]->type!=STRING){
-		printf("[ERROR] a cmdname expected at [%.*s]\n", token_arr[0]->len, token_arr[0]->str);
+		dprintf("[ERROR] a cmdname expected at [%.*s]\n", token_arr[0]->len, token_arr[0]->str);
 		return false;
 	}
 	Execution* exec=(Execution*)malloc(sizeof(Execution));
@@ -120,7 +114,7 @@ static int parse_arg(const Token** tokens, const int tokens_len, Execution* exec
 		if(token->type!=STRING)
 			break;
 		if(exec->argc>=EXECUTION_MAX_ARGC){
-			printf("[ERROR] number of arguments exceeds limit [%d/%d]\n", exec->argc, EXECUTION_MAX_ARGC);
+			dprintf("[ERROR] number of arguments exceeds limit [%d/%d]\n", exec->argc, EXECUTION_MAX_ARGC);
 			return -1;
 		}
 		exec->args[exec->argc++]=token;
@@ -145,7 +139,7 @@ static bool parse_arg_expect(const Token** tokens, const int tokens_len, Executi
 static bool parse_filename(const Token** tokens, int tokens_len, const char* err_msg){
 	if(tokens_len==0 || tokens[0]->type!=STRING){
 		if(err_msg)
-			printf("%s", err_msg);
+			dprintf("%s", err_msg);
 		return false;
 	}
 	return true;
@@ -182,7 +176,7 @@ static bool parse_terminate(const Token*** tokens, int tokens_len, Execution* ou
 			}
 			break;
 		default:
-			printf("[ERROR] expects '>' or '>>' operator (or a ';')\n");
+			dprintf("[ERROR] expects '>' or '>>' operator (or a ';')\n");
 			success=false;
 			break;
 	}
@@ -202,7 +196,7 @@ static bool parse_recursive(const Token*** tokens, int tokens_len, Execution* ou
 		return true;
 	const Token** end=*tokens+tokens_len;
 	if((*tokens)[0]->type!=PIPE){
-		printf("[ERROR] expect a pipe commandat [%.*s]\n", (*tokens)[0]->len, (*tokens)[0]->str);
+		dprintf("[ERROR] expect a pipe commandat [%.*s]\n", (*tokens)[0]->len, (*tokens)[0]->str);
 		return false;
 	}
 	(*tokens)++; //advance tokens
@@ -224,7 +218,7 @@ static bool parse_recursive(const Token*** tokens, int tokens_len, Execution* ou
 }
 
 #define ERR_RETURN(...) do{\
-	printf(__VA_ARGS__);\
+	dprintf(__VA_ARGS__);\
 	free(exec);\
 	*out_exec=NULL;\
 	return NULL;\
@@ -327,7 +321,7 @@ static const Token** parse_command(const Token** tokens, int tokens_len, Executi
 		}
 	}
 	if(tokens!=end_tok){
-		printf("[ERROR] unexpected token [%.*s]\n", tokens[0]->len, tokens[0]->str);
+		dprintf("[ERROR] unexpected token [%.*s]\n", tokens[0]->len, tokens[0]->str);
 		return NULL;
 	}
 	return tokens;
@@ -353,7 +347,7 @@ bool interpret(const Token** tokens, int len){
 				//print commands
 				if(execution){
 					execution_print(execution);
-					printf("\n");
+					dprintf("\n");
 				}
 				// temporarily exits
 				if(execution->cmd==EXEC_EXIT)
@@ -363,9 +357,7 @@ bool interpret(const Token** tokens, int len){
 				++i;
 				break;
 			default:
-#ifdef DEBUG
-				printf("[ERROR] expect a command at token [%.*s]\n", tok->len, tok->str);
-#endif
+				dprintf("[ERROR] expect a command at token [%.*s]\n", tok->len, tok->str);
 				return false;
 		}
 		break;

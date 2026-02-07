@@ -107,14 +107,10 @@ int parse(const char* line, Token** out_tokens, int max_token_count){
 		if(len==0){ //end of line
 			break;
 		} else if(len==-1){ //error
-#ifdef DEBUG
-			printf("[ERROR] when getting token at position [%d] of line [%s]\n", (int)(it-line), line);
-#endif
+			dprintf("[ERROR] when getting token at position [%d] of line [%s]\n", (int)(it-line), line);
 			return -1;
 		} else if(token_count>=max_token_count){ //buffer overflow
-#ifdef DEBUG
-			printf("[WARNING] parse reaches max_token_count\n");
-#endif
+			dprintf("[WARNING] parse reaches max_token_count\n");
 			return -1;
 		}
 		else{
@@ -122,9 +118,7 @@ int parse(const char* line, Token** out_tokens, int max_token_count){
 			out_tokens[token_count]=token;
 			token_count++;
 			if(token->type==ERRTOKEN){
-#ifdef DEBUG
-				printf("[ERROR] parsing token [%.*s]\n", token->len, token->str);
-#endif
+				dprintf("[ERROR] parsing token [%.*s]\n", token->len, token->str);
 				return -1;
 			}
 		}

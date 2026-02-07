@@ -34,7 +34,9 @@ int main(){
 		int tokens_len=parse(buffer, token_buffer, sizeof(token_buffer));
 		if(tokens_len==-1){ // error
 		} else{
-			interpret((const Token**)token_buffer, tokens_len);
+			if(!interpret((const Token**)token_buffer, tokens_len)){
+				printf("Error: invalid command\n");
+			}
 		}
 	}
 	return 0;
