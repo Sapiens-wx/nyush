@@ -5,6 +5,7 @@
 #include <string.h>
 #include "parser.h"
 #include "interpretor.h"
+#include "executor.h"
 
 static char cwd[1024];
 
@@ -33,9 +34,17 @@ int main(){
 		buffer[strcspn(buffer, "\n")]='\0'; // get rid of the \n char
 		int tokens_len=parse(buffer, token_buffer, sizeof(token_buffer));
 		if(tokens_len==-1){ // error
+			printf("Error: invalid command\n");
 		} else{
-			if(!interpret((const Token**)token_buffer, tokens_len)){
-				printf("Error: invalid command\n");
+			switch(interpret((const Token**)token_buffer, tokens_len)){
+				case INTERPRET_INVALID_COMMAND:
+					printf("Error: invalid command\n");
+					break;
+				case INTERPRET_INVALID_PROGRAM:
+					printf("Error: invalid program\n");
+					break;
+				case INTERPRET_SUCCEED:
+					break;
 			}
 		}
 	}

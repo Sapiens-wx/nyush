@@ -5,6 +5,7 @@
 #include "interpretor.h"
 #include "config.h"
 #include "parser.h"
+#include "executor.h"
 
 
 // ===============
@@ -334,7 +335,7 @@ static const Token** parse_command(const Token** tokens, int tokens_len, Executi
 // - tokens: the tokens to interpret
 // - len: length of [tokens]
 // returns: true if valid command;
-bool interpret(const Token** tokens, int len){
+InterpretResult interpret(const Token** tokens, int len){
 	Execution* execution=NULL;
 	for(int i=0;i<len;){
 		const Token* tok=tokens[i];
@@ -342,25 +343,25 @@ bool interpret(const Token** tokens, int len){
 			case STRING:
 				tokens=parse_command(tokens, len, &execution);
 				if(tokens==NULL){ // error
-					return false;
+					return INTERPRET_INVALID_COMMAND;
 				}
 				//print commands
 				if(execution){
 					execution_print(execution);
 					dprintf("\n");
 				}
-				// temporarily exits
-				if(execution->cmd==EXEC_EXIT)
-					exit(0);
+				if(!execute(execution)){
+					return INTERPRET_INVALID_PROGRAM;
+				}
 				break;
 			case SEMICOLON: // end of this command
 				++i;
 				break;
 			default:
 				dprintf("[ERROR] expect a command at token [%.*s]\n", tok->len, tok->str);
-				return false;
+				return INTERPRET_INVALID_COMMAND;
 		}
 		break;
 	}
-	return true;
+	return INTERPRET_SUCCEED;
 }

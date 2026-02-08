@@ -31,4 +31,10 @@ typedef struct Execution{
 	bool is_piped;
 } Execution;
 
-bool interpret(const struct Token** tokens, int len);
+typedef enum InterpretResult{
+	INTERPRET_SUCCEED,
+	INTERPRET_INVALID_COMMAND,
+	INTERPRET_INVALID_PROGRAM
+} InterpretResult;
+
+InterpretResult interpret(const struct Token** tokens, int len);
