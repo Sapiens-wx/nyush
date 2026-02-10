@@ -2,4 +2,4 @@
 *.swp
 test
 .vimrc
-./nyush
+nyush

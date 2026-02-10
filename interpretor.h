@@ -34,7 +34,11 @@ typedef struct Execution{
 typedef enum InterpretResult{
 	INTERPRET_SUCCEED,
 	INTERPRET_INVALID_COMMAND,
-	INTERPRET_INVALID_PROGRAM
+	INTERPRET_INVALID_PROGRAM,
+	INTERPRET_INVALID_FILE,
+	INTERPRET_EXIT,
+	INTERPRET_SIGINT,
+	INTERPRET_ERROR
 } InterpretResult;
 
 InterpretResult interpret(const struct Token** tokens, int len);

@@ -350,9 +350,8 @@ InterpretResult interpret(const Token** tokens, int len){
 					execution_print(execution);
 					dprintf("\n");
 				}
-				if(!execute(execution)){
-					return INTERPRET_INVALID_PROGRAM;
-				}
+				InterpretResult result=execute(execution);
+				return result;
 				break;
 			case SEMICOLON: // end of this command
 				++i;
