@@ -20,6 +20,43 @@ enum{
 	EXEC_INVALID_FILE=127
 };
 
+// parses the token's string to a positive integer.
+// returns -1 if fails
+static int token_to_int(const Token* tok){
+	int res=0;
+	for(int i=0;i<tok->len;++i){
+		int char_val=tok->str[i]-'0';
+		if(char_val>=10||char_val<0){
+			dprintf("[ERROR] error parsing integer [%.*s]\n", tok->len, tok->str);
+			return -1;
+		}
+		res*=10;
+		res+=char_val;
+	}
+	return res;
+}
+
+static InterpretResult wait_pid_get_result(pid_t pid){
+	InterpretResult result=INTERPRET_SUCCEED;
+	int status;
+	// if waitpid<0, then it means the user pressed ^C
+	if(waitpid(pid, &status, 0)>0 && WIFEXITED(status)){
+		int code=WEXITSTATUS(status);
+		switch(code){
+			case EXEC_INVALID_PROGRAM:
+				result=INTERPRET_INVALID_PROGRAM;
+				break;
+			case EXEC_INVALID_FILE:
+				result=INTERPRET_INVALID_FILE;
+				break;
+			default:
+				break;
+		}
+	} else
+		result=INTERPRET_SIGNAL;
+	return result;
+}
+
 // brief: makes params for function execvp
 // params:
 // - exec: the Execution struct
@@ -70,6 +107,11 @@ static InterpretResult execution_recursive(Execution* exec, int* prev_pipefd, pi
 		return INTERPRET_ERROR;
 	}
 	else if(cur_pid==0){ //child process
+		// set process group id to self
+		setpgid(0, 0);            // 子进程新建进程组
+		signal(SIGINT, SIG_DFL);
+		signal(SIGTSTP, SIG_DFL);
+		signal(SIGQUIT, SIG_DFL);
 		if(prev_pipefd){ // handle previous pipe
 			dup2(prev_pipefd[0], STDIN_FILENO);
 			close(prev_pipefd[0]);
@@ -125,6 +167,84 @@ static InterpretResult execution_recursive(Execution* exec, int* prev_pipefd, pi
 	return INTERPRET_SUCCEED;
 }
 
+// -----job struct-----
+
+void job_init(Job* job, Execution* exec){
+	if(exec==NULL)
+		job->cmd[0]=0;
+	else
+		snprintf(job->cmd, sizeof(job->cmd)-1, "%.*s", exec->cmd_tok->len, exec->cmd_tok->str);
+	memset(job->pids, 0, sizeof(job->pids));
+}
+
+// -----for the jobs command-----
+
+void executioninfo_fg_sigint(){
+	if(execution_info.fg_job.cmd){
+		for(pid_t* it=execution_info.fg_job.pids;*it;++it){
+			kill(-*it, SIGINT);
+			waitpid(*it, NULL, 0);
+		}
+	}
+	job_init(&execution_info.fg_job, NULL);
+}
+
+void executioninfo_fg_sigtstp(){
+	if(execution_info.fg_job.cmd){
+		for(pid_t* it=execution_info.fg_job.pids;*it;++it){
+			kill(-*it, SIGTSTP);
+		}
+	}
+	execution_info.bg_jobs[execution_info.bg_jobs_count++]=execution_info.fg_job;
+	job_init(&execution_info.fg_job, NULL);
+}
+
+void executioninfo_fg_sigquit(){
+	if(execution_info.fg_job.cmd){
+		for(pid_t* it=execution_info.fg_job.pids;*it;++it){
+			kill(-*it, SIGQUIT);
+			waitpid(*it, NULL, 0);
+		}
+	}
+	job_init(&execution_info.fg_job, NULL);
+}
+
+void executioninfo_print_jobs(){
+	for(int i=0;i<execution_info.bg_jobs_count;++i){
+		printf("[%d] %s\n", i+1, execution_info.bg_jobs[i].cmd);
+	}
+}
+
+// used by the 'fg' command.
+// puts a background job to the foreground
+InterpretResult executioninfo_fg_job(int idx){
+	if(idx<0 || idx>=execution_info.bg_jobs_count){
+		fprintf(stderr, "[ERROR] job index out of bounds [%d/%d]\n", idx, execution_info.bg_jobs_count);
+		return INTERPRET_ERROR;
+	}
+	execution_info.fg_job=execution_info.bg_jobs[idx];
+	// remove the job from the background
+	--execution_info.bg_jobs_count;
+	for(int i=idx;i<execution_info.bg_jobs_count;++i){
+		execution_info.bg_jobs[i]=execution_info.bg_jobs[i+1];
+	}
+	// resume the job
+	for(pid_t* it=execution_info.fg_job.pids;*it;++it){
+		kill(*it, SIGCONT);
+	}
+	// wait for all pids
+	InterpretResult result=INTERPRET_SUCCEED;
+	for(pid_t* it=execution_info.fg_job.pids;*it && result==INTERPRET_SUCCEED;++it){
+		result=wait_pid_get_result(*it);
+	}
+	return result;
+}
+
+void executioninfo_init(){
+	job_init(&execution_info.fg_job, NULL);
+	execution_info.bg_jobs_count=0;
+}
+
 // brief: executes a linked list of Execution
 // returns: true if success
 InterpretResult execute(Execution* exec){
@@ -142,35 +262,27 @@ InterpretResult execute(Execution* exec){
 		case EXEC_EXIT:
 			result=INTERPRET_EXIT;
 			break;
-		case EXEC_FG:
+		case EXEC_FG:{
+			int fg_idx=token_to_int(exec->args[0])-1;
+			if((result=executioninfo_fg_job(fg_idx))==INTERPRET_ERROR) {
+				fprintf(stderr, "fg: [%.*s]: no such job\n", exec->args[0]->len, exec->args[0]->str);
+				result=INTERPRET_SUCCEED;
+			}
 			break;
+		}
 		case EXEC_JOBS:
+			executioninfo_print_jobs();
+			result=INTERPRET_SUCCEED;
 			break;
 		case EXEC_CMD:{
-			pid_t pids[128];
-			memset(pids, 0, sizeof(pids));
-			result=execution_recursive(exec, NULL, pids);
-			execution_info.fg_jobs=pids;
+			// update fg_jobs
+			job_init(&execution_info.fg_job, exec);
+			result=execution_recursive(exec, NULL, execution_info.fg_job.pids);
 			// wait for all pids
-			for(pid_t* it=pids;*it && result==INTERPRET_SUCCEED;++it){
-				int status;
-				// if waitpid<0, then it means the user pressed ^C
-				if(waitpid(*it, &status, 0)>0 && WIFEXITED(status)){
-					int code=WEXITSTATUS(status);
-					switch(code){
-						case EXEC_INVALID_PROGRAM:
-							result=INTERPRET_INVALID_PROGRAM;
-							break;
-						case EXEC_INVALID_FILE:
-							result=INTERPRET_INVALID_FILE;
-							break;
-						default:
-							break;
-					}
-				} else
-					result=INTERPRET_SIGINT;
+			for(pid_t* it=execution_info.fg_job.pids;*it && result==INTERPRET_SUCCEED;++it){
+				result=wait_pid_get_result(*it);
 			}
-			execution_info.fg_jobs=NULL;
+			job_init(&execution_info.fg_job, NULL);
 			break;
 		}
 		default:
@@ -178,18 +290,4 @@ InterpretResult execute(Execution* exec){
 			break;
 	}
 	return result;
-}
-
-void executioninfo_fg_sigint(){
-	if(execution_info.fg_jobs){
-		for(pid_t* it=execution_info.fg_jobs;*it;++it){
-			kill(-*it, SIGINT);
-			waitpid(*it, NULL, 0);
-		}
-	}
-	execution_info.fg_jobs=NULL;
-}
-
-void executioninfo_init(){
-	execution_info.fg_jobs=NULL;
 }

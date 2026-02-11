@@ -26,12 +26,12 @@ static void handle_sigint(int sig) {
 
 static void handle_sigquit(int sig) {
 	sig++;
-    write(STDOUT_FILENO, "Caught SIGQUIT\n", 15);
+	executioninfo_fg_sigquit();
 }
 
 static void handle_sigtstp(int sig) {
 	sig++;
-    write(STDOUT_FILENO, "Caught SIGTSTP\n", 15);
+	executioninfo_fg_sigtstp();
 }
 
 static void register_signal_handlers(){
@@ -78,7 +78,7 @@ int main(){
 				case INTERPRET_EXIT:
 					is_running=false;
 					break;
-				case INTERPRET_SIGINT:
+				case INTERPRET_SIGNAL:
 					printf("\n");
 					break;
 				case INTERPRET_ERROR:
