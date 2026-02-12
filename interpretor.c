@@ -63,10 +63,7 @@ static bool cmdcmp(const Token* tok, const char* cmd){
 
 // returns true if the command is excluded from the shell
 static bool is_excluded_command(const Token* tok){
-	if(cmdcmp(tok, "fsck")){
-		return true;
-	}
-	return false;
+	return tok==NULL;
 }
 
 // -----forward declaration-----

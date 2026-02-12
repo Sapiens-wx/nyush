@@ -89,6 +89,28 @@ static InterpretResult wait_pid_get_result(pid_t pid){
 	return result;
 }
 
+// gets the executable file from [arg] according to the following rules:
+// - absolute path that begins with a slash: return the original
+// - relative path e.g., dir/program or ./dir/program: excutes that file
+// - base name e.g., program, search UNDER /usr/bin
+static bool get_exec_file_from_arg(const char* arg, char* out_file, int size){
+	if(arg==NULL)
+		return false;
+	//absolute path
+	if(arg[0]=='/'){
+		snprintf(out_file, size, "%s", arg);
+	}
+	//relative path
+	if(strchr(arg, '/')!=NULL){
+		snprintf(out_file, size, "%s", arg);
+	}
+	// base name
+	else{
+		snprintf(out_file, size, "/usr/bin/%s", arg);
+	}
+	return true;
+}
+
 // brief: makes params for function execvp
 // params:
 // - exec: the Execution struct
@@ -179,9 +201,11 @@ static InterpretResult execution_recursive(Execution* exec, int* prev_pipefd, pi
 		// copy arguments to argv, which is '\0' terminated
 		char** argv=NULL;
 		make_execvp_params(exec, &argv);
-		const char* file=argv[0];
-		// execute
-		execvp(file, argv);
+		char file[1024];
+		if(get_exec_file_from_arg(argv[0], file, sizeof(file))){
+			// execute
+			execvp(file, argv);
+		}
 		// release resources
 		free_argv(argv);
 		exit(EXEC_INVALID_PROGRAM);
