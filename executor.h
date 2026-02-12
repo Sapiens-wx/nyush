@@ -26,7 +26,7 @@ extern ExecutionInfo execution_info;
 void job_init(Job* job, Execution* exec);
 
 void executioninfo_init();
-void executioninfo_fg_sigint();
+void executioninfo_fg_signal();
 void executioninfo_fg_sigtstp();
 void executioninfo_fg_sigquit();
 void executioninfo_print_jobs();

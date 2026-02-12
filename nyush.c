@@ -5,6 +5,8 @@
 #include <string.h>
 #include <signal.h>
 #include <unistd.h>
+#include <wait.h>
+#include <fcntl.h>
 #include "parser.h"
 #include "interpretor.h"
 #include "executor.h"
@@ -19,32 +21,18 @@ void update_cwd(){
 }
 
 // -----signal handler-----
-static void handle_sigint(int sig) {
-	sig++;
-	executioninfo_fg_sigint();
-}
-
-static void handle_sigquit(int sig) {
-	sig++;
-	executioninfo_fg_sigquit();
-}
-
-static void handle_sigtstp(int sig) {
-	sig++;
-	executioninfo_fg_sigtstp();
-}
 
 static void register_signal_handlers(){
-	struct sigaction sa = {0};
+	//struct sigaction sa = {0};
 
-    sa.sa_handler = handle_sigint;
-    sigaction(SIGINT, &sa, NULL);
+    //sa.sa_handler = signal_handler;
+    //sigaction(SIGCHLD, &sa, NULL);
 
-    sa.sa_handler = handle_sigquit;
-    sigaction(SIGQUIT, &sa, NULL);
-
-    sa.sa_handler = handle_sigtstp;
-    sigaction(SIGTSTP, &sa, NULL);
+	signal(SIGINT, SIG_IGN);
+	signal(SIGQUIT, SIG_IGN);
+	signal(SIGTSTP, SIG_IGN);
+	signal(SIGTTOU, SIG_IGN);
+	signal(SIGTTIN, SIG_IGN);
 }
 
 int main(){

@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <signal.h>
 #include <fcntl.h>
+#include <errno.h>
 #include "config.h"
 #include "executor.h"
 #include "parser.h"
@@ -40,20 +41,43 @@ static InterpretResult wait_pid_get_result(pid_t pid){
 	InterpretResult result=INTERPRET_SUCCEED;
 	int status;
 	// if waitpid<0, then it means the user pressed ^C
-	if(waitpid(pid, &status, 0)>0 && WIFEXITED(status)){
-		int code=WEXITSTATUS(status);
-		switch(code){
-			case EXEC_INVALID_PROGRAM:
-				result=INTERPRET_INVALID_PROGRAM;
-				break;
-			case EXEC_INVALID_FILE:
-				result=INTERPRET_INVALID_FILE;
-				break;
-			default:
-				break;
+	while(1){
+		int wpid=waitpid(-pid, &status, WUNTRACED);
+		if(wpid==-1){
+			if(errno==EINTR) // interrupted by a signal. continue. (this is why we write a loop)
+				continue;
+			result=INTERPRET_ERROR;
+			break;
 		}
-	} else
-		result=INTERPRET_SIGNAL;
+		// stopped by ^Z
+		if(WIFSTOPPED(status)){
+			executioninfo_fg_sigtstp();
+			result=INTERPRET_SIGNAL;
+			break;
+		}
+		// job terminated by a signal
+		if(WIFSIGNALED(status)){
+			executioninfo_fg_signal();
+			result=INTERPRET_SIGNAL;
+			break;
+		}
+		// exitted normally
+		if(WIFEXITED(status)){
+			int code=WEXITSTATUS(status);
+			switch(code){
+				case EXEC_INVALID_PROGRAM:
+					result=INTERPRET_INVALID_PROGRAM;
+					break;
+				case EXEC_INVALID_FILE:
+					result=INTERPRET_INVALID_FILE;
+					break;
+				default:
+					result=INTERPRET_SUCCEED;
+					break;
+			}
+			break;
+		}
+	}
 	return result;
 }
 
@@ -108,7 +132,7 @@ static InterpretResult execution_recursive(Execution* exec, int* prev_pipefd, pi
 	}
 	else if(cur_pid==0){ //child process
 		// set process group id to self
-		setpgid(0, 0);            // 子进程新建进程组
+		setpgid(0, 0);
 		signal(SIGINT, SIG_DFL);
 		signal(SIGTSTP, SIG_DFL);
 		signal(SIGQUIT, SIG_DFL);
@@ -154,11 +178,16 @@ static InterpretResult execution_recursive(Execution* exec, int* prev_pipefd, pi
 		free_argv(argv);
 		exit(EXEC_INVALID_PROGRAM);
 	} else{ //parent process
+		setpgid(cur_pid, cur_pid);
 		pids[0]=cur_pid;
 		// close prev_pipefd
 		if(prev_pipefd){
 			close(prev_pipefd[0]);
 			close(prev_pipefd[1]);
+		} else{ // if this is the first command (if several commands are piped)
+			if(tcsetpgrp(STDIN_FILENO, cur_pid)==-1){ // set foreground group
+				perror("tcsetpgrp failed");
+			}
 		}
 		if(exec->is_piped){
 			execution_recursive(exec->next, pipefd, pids+1);
@@ -179,33 +208,12 @@ void job_init(Job* job, Execution* exec){
 
 // -----for the jobs command-----
 
-void executioninfo_fg_sigint(){
-	if(execution_info.fg_job.cmd){
-		for(pid_t* it=execution_info.fg_job.pids;*it;++it){
-			kill(-*it, SIGINT);
-			waitpid(*it, NULL, 0);
-		}
-	}
+void executioninfo_fg_signal(){
 	job_init(&execution_info.fg_job, NULL);
 }
 
 void executioninfo_fg_sigtstp(){
-	if(execution_info.fg_job.cmd){
-		for(pid_t* it=execution_info.fg_job.pids;*it;++it){
-			kill(-*it, SIGTSTP);
-		}
-	}
 	execution_info.bg_jobs[execution_info.bg_jobs_count++]=execution_info.fg_job;
-	job_init(&execution_info.fg_job, NULL);
-}
-
-void executioninfo_fg_sigquit(){
-	if(execution_info.fg_job.cmd){
-		for(pid_t* it=execution_info.fg_job.pids;*it;++it){
-			kill(-*it, SIGQUIT);
-			waitpid(*it, NULL, 0);
-		}
-	}
 	job_init(&execution_info.fg_job, NULL);
 }
 
@@ -229,6 +237,9 @@ InterpretResult executioninfo_fg_job(int idx){
 		execution_info.bg_jobs[i]=execution_info.bg_jobs[i+1];
 	}
 	// resume the job
+	if(execution_info.fg_job.pids[0]==0)
+		dprintf("[ERROR] resuming a job but its pids is empty\n");
+	tcsetpgrp(STDIN_FILENO, execution_info.fg_job.pids[0]);
 	for(pid_t* it=execution_info.fg_job.pids;*it;++it){
 		kill(*it, SIGCONT);
 	}
@@ -289,5 +300,6 @@ InterpretResult execute(Execution* exec){
 			result=INTERPRET_INVALID_PROGRAM;
 			break;
 	}
+	tcsetpgrp(STDIN_FILENO, getpgrp()); // set foreground group
 	return result;
 }
