@@ -10,6 +10,7 @@ typedef enum{
 	EXEC_FG,
 	EXEC_JOBS,
 	EXEC_CMD, // a command name
+	EXEC_EXCLUDED, // commands that should print "invalid program"
 	EXEC_ERR
 }ExecutionCMD;
 

@@ -10,15 +10,7 @@
 #include "parser.h"
 #include "interpretor.h"
 #include "executor.h"
-
-static char cwd[1024];
-
-void update_cwd(){
-	//get cwd
-	if(getcwd(cwd, sizeof(cwd))==NULL){
-		printf("error getting current working directory!\n");
-	}
-}
+#include "workdir.h"
 
 // -----signal handler-----
 
@@ -43,15 +35,17 @@ int main(){
 	char buffer[1024]="\0";
 	bool is_running=true;
 	while(is_running){
-		update_cwd();
-		printf("[nyush %s]$ ", cwd);
+		cwd_update();
+		if(feof(stdin))
+			break;
+		printf("[nyush %s]$ ", cwd_get());
 		fflush(stdout);
 		buffer[0]='\0';
 		fgets(buffer, sizeof(buffer), stdin);
 		buffer[strcspn(buffer, "\n")]='\0'; // get rid of the \n char
 		int tokens_len=parse(buffer, token_buffer, sizeof(token_buffer));
 		if(tokens_len==-1){ // error
-			printf("Error: invalid command\n");
+			fprintf(stderr, "Error: invalid command\n");
 		} else{
 			switch(interpret((const Token**)token_buffer, tokens_len)){
 				case INTERPRET_INVALID_COMMAND:
@@ -67,7 +61,6 @@ int main(){
 					is_running=false;
 					break;
 				case INTERPRET_SIGNAL:
-					printf("\n");
 					break;
 				case INTERPRET_ERROR:
 					fprintf(stderr, "[ERROR]: internal error\n");

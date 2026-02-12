@@ -1,4 +1,5 @@
 #define _POSIX_C_SOURCE 200809L
+#include <termios.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdbool.h>
@@ -20,6 +21,13 @@ enum{
 	EXEC_INVALID_PROGRAM=126,
 	EXEC_INVALID_FILE=127
 };
+
+static void tcsetpgrp_if_isatty(pid_t pid){
+	// trying to set the foreground process group if is a terminal
+	if(isatty(STDIN_FILENO) && tcsetpgrp(STDIN_FILENO, pid)==-1){ //check if it is a terminal
+		perror("tcsetpgrp failed");
+	}
+}
 
 // parses the token's string to a positive integer.
 // returns -1 if fails
@@ -185,9 +193,7 @@ static InterpretResult execution_recursive(Execution* exec, int* prev_pipefd, pi
 			close(prev_pipefd[0]);
 			close(prev_pipefd[1]);
 		} else{ // if this is the first command (if several commands are piped)
-			if(tcsetpgrp(STDIN_FILENO, cur_pid)==-1){ // set foreground group
-				perror("tcsetpgrp failed");
-			}
+			tcsetpgrp_if_isatty(cur_pid);
 		}
 		if(exec->is_piped){
 			execution_recursive(exec->next, pipefd, pids+1);
@@ -202,7 +208,7 @@ void job_init(Job* job, Execution* exec){
 	if(exec==NULL)
 		job->cmd[0]=0;
 	else
-		snprintf(job->cmd, sizeof(job->cmd)-1, "%.*s", exec->cmd_tok->len, exec->cmd_tok->str);
+		snprintf(job->cmd, sizeof(job->cmd)-1, "%s", exec->cmd_tok->str);
 	memset(job->pids, 0, sizeof(job->pids));
 }
 
@@ -227,7 +233,7 @@ void executioninfo_print_jobs(){
 // puts a background job to the foreground
 InterpretResult executioninfo_fg_job(int idx){
 	if(idx<0 || idx>=execution_info.bg_jobs_count){
-		fprintf(stderr, "[ERROR] job index out of bounds [%d/%d]\n", idx, execution_info.bg_jobs_count);
+		dprintf("[ERROR] job index out of bounds [%d/%d]\n", idx, execution_info.bg_jobs_count);
 		return INTERPRET_ERROR;
 	}
 	execution_info.fg_job=execution_info.bg_jobs[idx];
@@ -239,7 +245,7 @@ InterpretResult executioninfo_fg_job(int idx){
 	// resume the job
 	if(execution_info.fg_job.pids[0]==0)
 		dprintf("[ERROR] resuming a job but its pids is empty\n");
-	tcsetpgrp(STDIN_FILENO, execution_info.fg_job.pids[0]);
+	tcsetpgrp_if_isatty(execution_info.fg_job.pids[0]);
 	for(pid_t* it=execution_info.fg_job.pids;*it;++it){
 		kill(*it, SIGCONT);
 	}
@@ -271,12 +277,17 @@ InterpretResult execute(Execution* exec){
 			break;
 		}
 		case EXEC_EXIT:
-			result=INTERPRET_EXIT;
+			if(execution_info.bg_jobs_count>0){
+				fprintf(stderr, "Error: there are suspended jobs\n");
+				result=INTERPRET_SUCCEED;
+			} else{
+				result=INTERPRET_EXIT;
+			}
 			break;
 		case EXEC_FG:{
 			int fg_idx=token_to_int(exec->args[0])-1;
 			if((result=executioninfo_fg_job(fg_idx))==INTERPRET_ERROR) {
-				fprintf(stderr, "fg: [%.*s]: no such job\n", exec->args[0]->len, exec->args[0]->str);
+				fprintf(stderr, "Error: invalid job\n");
 				result=INTERPRET_SUCCEED;
 			}
 			break;
@@ -300,6 +311,6 @@ InterpretResult execute(Execution* exec){
 			result=INTERPRET_INVALID_PROGRAM;
 			break;
 	}
-	tcsetpgrp(STDIN_FILENO, getpgrp()); // set foreground group
+	tcsetpgrp_if_isatty(getpgrp()); // set foreground group
 	return result;
 }

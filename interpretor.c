@@ -61,6 +61,14 @@ static bool cmdcmp(const Token* tok, const char* cmd){
 	return tok->len==(int)strlen(cmd) && strncmp(tok->str, cmd, tok->len)==0;
 }
 
+// returns true if the command is excluded from the shell
+static bool is_excluded_command(const Token* tok){
+	if(cmdcmp(tok, "fsck")){
+		return true;
+	}
+	return false;
+}
+
 // -----forward declaration-----
 static bool parse_cmd(const Token*** tokens, int tokens_len, Execution** out_exec);
 static int parse_arg(const Token** tokens, const int tokens_len, Execution* exec);
@@ -287,6 +295,10 @@ static const Token** parse_command(const Token** tokens, int tokens_len, Executi
 			++tokens;
 		}
 		exec->cmd=EXEC_JOBS;
+	}
+	// excluded commands
+	else if(is_excluded_command(exec->cmd_tok)){
+		exec->cmd=EXEC_EXCLUDED;
 	}
 	// external commands
 	else if(exec->cmd_tok->type==STRING){
